@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ระบบจัดการสต็อก Lab ทันตกรรม</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; }
+        
+        .nav-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav-tab { padding: 10px 20px; background: #e2e8f0; color: #333; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 15px; }
+        .nav-tab.active-tab { background: #007bff; color: white; }
+
+        .mode-select { margin-bottom: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; }
+        .mode-select button { padding: 10px 20px; font-size: 15px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; }
+        .btn-import { background-color: #28a745; color: white; }
+        .btn-export { background-color: #dc3545; color: white; }
+        .btn-check { background-color: #ffc107; color: black; }
+        .active { outline: 4px solid #000; transform: scale(1.05); }
+        input[type="text"], input[type="date"], select { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; }
+        .scan-input { padding: 15px; font-size: 18px; text-align: center; border: 2px solid #ccc; border-radius: 5px; width: 100%; }
+        .search-box { margin-top: 15px; margin-bottom: 10px; }
+        .result-box { margin-top: 20px; padding: 15px; border-radius: 5px; background: #e9ecef; display: none; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .form-group { margin-bottom: 10px; }
+        .btn-save { background: #007bff; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px; }
+        .btn-print { background: #6c757d; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 5px; }
+        .download-section { margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }
+        .btn-dl { background-color: #17a2b8; color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; }
+        .stats-box { display: flex; justify-content: space-around; background: #e2e8f0; padding: 15px; border-radius: 5px; margin-top: 20px; font-weight: bold; text-align: center; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #007bff; color: white; }
+        .alert-due { color: red; font-weight: bold; }
+        .section-box { background: #fff; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1; margin-bottom: 12px; }
+        .section-title { font-weight: bold; margin-bottom: 8px; color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+
+        /* สติกเกอร์ขนาด 5x5 นิ้ว สำหรับปริ้นท์ออกเครื่องพิมพ์ใบเสร็จ/สติกเกอร์ */
+        @media print {
+            body * { visibility: hidden; }
+            #printableSticker, #printableSticker * { visibility: visible; }
+            #printableSticker {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 5in;
+                height: 5in;
+                padding: 15px;
+                background: white;
+                box-sizing: border-box;
+                font-size: 14px;
+                border: 2px dashed #000;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>ระบบสแกนบาร์โค้ด Lab ทันตกรรม <span id="pageTitle" style="color: #007bff; font-size: 18px;"></span></h2>
+    
+    <div class="nav-tabs">
+        <a href="/" class="nav-tab {% if current_dept == 'all' %}active-tab{% endif %}">📊 แสดงทั้งหมด</a>
+        {% for dept in departments.keys() %}
+        <a href="/department/{{ dept }}" class="nav-tab {% if current_dept == dept %}active-tab{% endif %}">🦷 {{ dept }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="mode-select">
+        <button id="btnImport" class="btn-import active" onclick="setMode('import')">📥 นำเข้าสินค้า</button>
+        <button id="btnExport" class="btn-export" onclick="setMode('export')">📤 นำออกสินค้า</button>
+        <button id="btnCheck" class="btn-check" onclick="setMode('check')">🔍 ตรวจสอบสินค้า</button>
+    </div>
+
+    <input type="text" id="barcodeInput" class="scan-input" placeholder="คลิกที่นี่แล้วใช้เครื่องยิงบาร์โค้ด..." autofocus autocomplete="off">
+
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔎 ค้นหาสินค้าในหน้านี้..." onkeyup="filterTable()">
+    </div>
+
+    <div id="resultBox" class="result-box">
+        <h3 id="resMessage" style="margin-top:0; color: #155724;"></h3>
+        <p><strong>สถานะปัจจุบัน:</strong> <span id="resStatus" style="font-weight: bold; color: #d9534f;"></span></p>
+        
+        <hr>
+        <h4>จัดการรายละเอียดงาน</h4>
+        <input type="hidden" id="currentBarcode">
+        
+        <div class="form-grid">
+            <div class="form-group">
+                <label>ประเภทงาน:</label>
+                <select id="jobType" onchange="toggleJobFields()">
+                    <optgroup label="แผนกติดแน่น">
+                        <option value="Crown">Crown</option>
+                        <option value="Veneer">Veneer</option>
+                        <option value="Implant">Implant</option>
+                        <option value="Bridge">Bridge</option>
+                    </optgroup>
+                    <optgroup label="แผนกถอดได้">
+                        <option value="Retainer ใส">Retainer ใส</option>
+                        <option value="Retainer ลวด">Retainer ลวด</option>
+                        <option value="CD">CD (ฟันปลอมทั้งปาก)</option>
+                        <option value="RPD">RPD (ฟันปลอมบางส่วน)</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>ตำแหน่งฟัน (Arch):</label>
+                <select id="archInput">
+                    <option value="U">U (ฟันบน)</option>
+                    <option value="L">L (ฟันล่าง)</option>
+                    <option value="U/L">U/L (ทั้งบนและล่าง)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>รหัสบาร์โค้ด:</label>
+                <input type="text" id="displayBarcode" disabled style="background: #e9ecef;">
+            </div>
+            <div class="form-group">
+                <label>วัสดุที่ใช้:</label>
+                <input type="text" id="materialInput" placeholder="เช่น Zirconia, E.max, Acrylic">
+            </div>
+            
+            <!-- ฟิลด์พิเศษแยกตามระบบงาน -->
+            <div class="form-group" id="teethCountGroup">
+                <label>จำนวนซี่ที่ต้องทำ (1-32 ซี่):</label>
+                <input type="number" id="teethCountInput" min="1" max="32" value="1">
+            </div>
+            <div class="form-group" id="retainerColorGroup" style="display:none;">
+                <label>สีของงาน (Retainer):</label>
+                <input type="text" id="retainerColorInput" placeholder="ระบุสีงาน เช่น ใส, ชมพู, กลิตเตอร์">
+            </div>
+        </div>
+
+        <div class="section-box" id="importSectionBox">
+            <div class="section-title" style="color: #16a34a;">📥 ข้อมูลตอนนำเข้างาน</div>
+            <div class="form-grid" style="margin-top:0;">
+                <div class="form-group">
+                    <label>วันรับงาน:</label>
+                    <input type="date" id="receiveDate">
+                </div>
+                <div class="form-group">
+                    <label>วันงานออก (กำหนดส่ง):</label>
+                    <input type="date" id="dueDate">
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                    <label>ชื่อผู้นำเข้างาน:</label>
+                    <input type="text" id="importerInput" placeholder="ระบุชื่อพนักงานที่นำเข้า">
+                </div>
+            </div>
+        </div>
+
+        <div class="section-box" id="exportSectionBox">
+            <div class="section-title" style="color: #dc2626;">📤 ข้อมูลตอนนำออกงาน</div>
+            <div class="form-grid" style="margin-top:0;">
+                <div class="form-group">
+                    <label>วันที่สแกนงานออก:</label>
+                    <input type="date" id="exportDateInput">
+                </div>
+                <div class="form-group">
+                    <label>ชื่อผู้นำออกงาน:</label>
+                    <input type="text" id="exporterInput" placeholder="ระบุชื่อพนักงานที่นำออก">
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-save" onclick="saveJobDetails()">💾 บันทึกข้อมูลงาน</button>
+        <button class="btn-print" onclick="printSticker()">🖨️ พิมพ์สติกเกอร์สรุปงาน (5x5 นิ้ว)</button>
+    </div>
+
+    <!-- ส่วนสำหรับพิมพ์สติกเกอร์ (ขนาด 5x5 นิ้ว) -->
+    <div id="printableSticker" style="display:none;">
+        <h3 style="text-align:center; margin:0 0 8px 0; border-bottom:2px solid #000; padding-bottom:5px; font-size:16px;">🦷 LAB DENTAL STICKER</h3>
+        <p style="margin:4px 0;"><strong>บาร์โค้ด:</strong> <span id="pBarcode"></span></p>
+        <p style="margin:4px 0;"><strong>แผนก:</strong> <span id="pDept"></span> | <strong>ประเภท:</strong> <span id="pJob"></span></p>
+        <p style="margin:4px 0;"><strong>ตำแหน่งฟัน:</strong> <span id="pArch"></span></p>
+        <p style="margin:4px 0;" id="pTeethRow"><strong>จำนวนซี่:</strong> <span id="pTeethCount"></span> ซี่</p>
+        <p style="margin:4px 0; display:none;" id="pColorRow"><strong>สีงาน:</strong> <span id="pColor"></span></p>
+        <p style="margin:4px 0;"><strong>วัสดุ:</strong> <span id="pMaterial"></span></p>
+        <p style="margin:4px 0;"><strong>วันรับงาน:</strong> <span id="pReceive"></span> | <strong>กำหนดส่ง:</strong> <span id="pDue"></span></p>
+        <p style="margin:4px 0;"><strong>ผู้นำเข้า:</strong> <span id="pImporter"></span></p>
+        <p style="margin:4px 0;"><strong>ผู้นำออก:</strong> <span id="pExporter"></span> (<strong>วันที่ออก:</strong> <span id="pExportDate"></span>)</p>
+    </div>
+
+    <div class="stats-box">
+        <div>สถิติรวมทั้งหมด: <span id="statTotal">{{ stats.total }}</span> ครั้ง</div>
+        <div>นำเข้าแล้ว: <span id="statImport">{{ stats.import_count }}</span> ครั้ง</div>
+        <div>นำออกแล้ว: <span id="statExport">{{ stats.export_count }}</span> ครั้ง</div>
+    </div>
+
+    <div class="download-section">
+        <a href="/api/download-excel/all" class="btn-dl">📊 โหลด Excel สถิติรวม</a>
+        <a href="/api/download-excel/import" class="btn-dl" style="background-color: #28a745;">📥 โหลด Excel เฉพาะนำเข้า</a>
+        <a href="/api/download-excel/export" class="btn-dl" style="background-color: #dc3545;">📤 โหลด Excel เฉพาะนำออก</a>
+    </div>
+
+    <h3 id="tableHeaderTitle">รายการงานทั้งหมดในระบบ</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>การทำงานล่าสุด</th>
+                <th>บาร์โค้ด</th>
+                <th>แผนก</th>
+                <th>ประเภทงาน</th>
+                <th>ตำแหน่งฟัน</th>
+                <th>รายละเอียดพิเศษ</th>
+                <th>วันรับงาน</th>
+                <th>วันกำหนดออก</th>
+                <th>วัสดุ</th>
+                <th>ผู้นำเข้า</th>
+                <th>ผู้นำออก</th>
+                <th>วันที่ออก</th>
+                <th>สถานะ</th>
+            </tr>
+        </thead>
+        <tbody id="logTableBody">
+            {% if logs %}
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.action }}</td>
+                    <td>{{ log.barcode }}</td>
+                    <td>{{ log.department }}</td>
+                    <td><b>{{ log.job_type }}</b></td>
+                    <td>{{ log.arch or 'U/L' }}</td>
+                    <td>{{ log.teeth_count if log.department == 'แผนกติดแน่น' else log.retainer_color }}</td>
+                    <td>{{ log.receive_date or '-' }}</td>
+                    <td class="due-date-cell">{{ log.due_date or '-' }}</td>
+                    <td>{{ log.material }}</td>
+                    <td>{{ log.importer or '-' }}</td>
+                    <td>{{ log.exporter or '-' }}</td>
+                    <td>{{ log.export_date or '-' }}</td>
+                    <td><b>{{ log.status }}</b></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="13" style="color: #777;">ยังไม่มีประวัติการสแกนในหมวดหมู่นี้</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let currentMode = 'import';
+    let globalLogs = {{ logs | tojson }};
+    let currentDeptPage = "{{ current_dept }}";
+
+    window.onload = function() {
+        if(currentDeptPage !== 'all') {
+            document.getElementById('pageTitle').innerText = `(${currentDeptPage})`;
+            document.getElementById('tableHeaderTitle').innerText = `รายการงานเฉพาะ: ${currentDeptPage}`;
+        } else {
+            document.getElementById('pageTitle').innerText = `(ภาพรวมทั้งหมด)`;
+        }
+        toggleJobFields();
+        renderTable(globalLogs);
+    }
+
+    function toggleJobFields() {
+        let jobType = document.getElementById('jobType').value;
+        let teethGroup = document.getElementById('teethCountGroup');
+        let colorGroup = document.getElementById('retainerColorGroup');
+
+        // ตรวจสอบว่าเป็นแผนกถอดได้ (Retainer/CD/RPD) หรือติดแน่น
+        if (jobType.includes('Retainer') || jobType === 'CD' || jobType === 'RPD') {
+            teethGroup.style.display = 'none';
+            colorGroup.style.display = 'block';
+        } else {
+            teethGroup.style.display = 'block';
+            colorGroup.style.display = 'none';
+        }
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btnImport').classList.toggle('active', mode === 'import');
+        document.getElementById('btnExport').classList.toggle('active', mode === 'export');
+        document.getElementById('btnCheck').classList.toggle('active', mode === 'check');
+        
+        let importBox = document.getElementById('importSectionBox');
+        let exportBox = document.getElementById('exportSectionBox');
+        
+        if (mode === 'import') {
+            importBox.style.borderColor = '#16a34a';
+            importBox.style.background = '#f0fdf4';
+            exportBox.style.borderColor = '#cbd5e1';
+            exportBox.style.background = '#fff';
+        } else if (mode === 'export') {
+            exportBox.style.borderColor = '#dc2626';
+            exportBox.style.background = '#fef2f2';
+            importBox.style.borderColor = '#cbd5e1';
+            importBox.style.background = '#fff';
+        } else {
+            importBox.style.borderColor = '#cbd5e1';
+            importBox.style.background = '#fff';
+            exportBox.style.borderColor = '#cbd5e1';
+            exportBox.style.background = '#fff';
+        }
+
+        document.getElementById('barcodeInput').focus();
+    }
+
+    const inputField = document.getElementById('barcodeInput');
+    inputField.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            let barcode = inputField.value.trim();
+            if(!barcode) return;
+
+            fetch('/api/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    barcode: barcode, 
+                    action: currentMode,
+                    department: currentDeptPage !== 'all' ? currentDeptPage : null
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const box = document.getElementById('resultBox');
+                box.style.display = 'block';
+                document.getElementById('resMessage').innerText = data.message;
+                document.getElementById('resStatus').innerText = data.item.status;
+                
+                document.getElementById('currentBarcode').value = barcode;
+                document.getElementById('displayBarcode').value = barcode;
+                document.getElementById('jobType').value = data.item.job_type || 'Crown';
+                document.getElementById('archInput').value = data.item.arch || 'U/L';
+                document.getElementById('receiveDate').value = data.item.receive_date || '';
+                document.getElementById('dueDate').value = data.item.due_date || '';
+                document.getElementById('materialInput').value = data.item.material !== '-' ? data.item.material : '';
+                document.getElementById('teethCountInput').value = data.item.teeth_count || '1';
+                document.getElementById('retainerColorInput').value = data.item.retainer_color || '';
+                document.getElementById('importerInput').value = data.item.importer || '';
+                document.getElementById('exporterInput').value = data.item.exporter || '';
+                document.getElementById('exportDateInput').value = data.item.export_date || '';
+
+                toggleJobFields();
+                inputField.value = '';
+            });
+        }
+    });
+
+    function saveJobDetails() {
+        let barcode = document.getElementById('currentBarcode').value;
+        let jobType = document.getElementById('jobType').value;
+        let arch = document.getElementById('archInput').value;
+        let receiveDate = document.getElementById('receiveDate').value;
+        let dueDate = document.getElementById('dueDate').value;
+        let material = document.getElementById('materialInput').value;
+        let teethCount = document.getElementById('teethCountInput').value;
+        let retainerColor = document.getElementById('retainerColorInput').value;
+        let importer = document.getElementById('importerInput').value;
+        let exporter = document.getElementById('exporterInput').value;
+        let exportDate = document.getElementById('exportDateInput').value;
+
+        fetch('/api/update-job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                barcode, action: currentMode, job_type: jobType, arch, receive_date: receiveDate, 
+                due_date: dueDate, material, teeth_count: teethCount, retainer_color: retainerColor, 
+                importer, exporter, export_date: exportDate 
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(!data.success) {
+                alert(data.message);
+                return;
+            }
+            alert(data.message);
+            document.getElementById('resStatus').innerText = data.item.status;
+            
+            globalLogs = data.logs;
+            if(currentDeptPage !== 'all') {
+                renderTable(globalLogs.filter(l => l.department === currentDeptPage));
+            } else {
+                renderTable(globalLogs);
+            }
+            
+            document.getElementById('statTotal').innerText = data.stats.total;
+            document.getElementById('statImport').innerText = data.stats.import_count;
+            document.getElementById('statExport').innerText = data.stats.export_count;
+        });
+    }
+
+    function printSticker() {
+        document.getElementById('pBarcode').innerText = document.getElementById('displayBarcode').value;
+        let jobTypeSelect = document.getElementById('jobType');
+        let jobTypeVal = jobTypeSelect.value;
+        document.getElementById('pJob').innerText = jobTypeVal;
+        document.getElementById('pDept').innerText = jobTypeSelect.options[jobTypeSelect.selectedIndex].parentNode.label;
+        document.getElementById('pArch').innerText = document.getElementById('archInput').value;
+        document.getElementById('pMaterial').innerText = document.getElementById('materialInput').value || '-';
+        document.getElementById('pReceive').innerText = document.getElementById('receiveDate').value || '-';
+        document.getElementById('pDue').innerText = document.getElementById('dueDate').value || '-';
+        document.getElementById('pImporter').innerText = document.getElementById('importerInput').value || '-';
+        document.getElementById('pExporter').innerText = document.getElementById('exporterInput').value || '-';
+        document.getElementById('pExportDate').innerText = document.getElementById('exportDateInput').value || '-';
+
+        let isRetainerOrRemovable = jobTypeVal.includes('Retainer') || jobTypeVal === 'CD' || jobTypeVal === 'RPD';
+        if (isRetainerOrRemovable) {
+            document.getElementById('pTeethRow').style.display = 'none';
+            document.getElementById('pColorRow').style.display = 'block';
+            document.getElementById('pColor').innerText = document.getElementById('retainerColorInput').value || '-';
+        } else {
+            document.getElementById('pTeethRow').style.display = 'block';
+            document.getElementById('pColorRow').style.display = 'none';
+            document.getElementById('pTeethCount').innerText = document.getElementById('teethCountInput').value || '1';
+        }
+
+        window.print();
+    }
+
+    function renderTable(logsToRender) {
+        let tbody = document.getElementById('logTableBody');
+        tbody.innerHTML = '';
+        
+        if (!logsToRender || logsToRender.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="13" style="color: #777;">ไม่พบข้อมูลสินค้าในหน้านี้</td></tr>`;
+            return;
+        }
+
+        let today = new Date();
+
+        logsToRender.forEach(log => {
+            let dueClass = '';
+            let dueText = log.due_date || '-';
+            if (log.due_date && log.due_date !== '-') {
+                let due = new Date(log.due_date);
+                let diffTime = due - today;
+                let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays <= 2) {
+                    dueClass = 'alert-due';
+                    dueText += ' ⚠️';
+                }
+            }
+
+            let specialDetail = log.department === 'แผนกติดแน่น' ? `จำนวน: ${log.teeth_count || '1'} ซี่` : `สี: ${log.retainer_color || '-'}`;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${log.action}</td>
+                    <td>${log.barcode}</td>
+                    <td>${log.department}</td>
+                    <td><b>${log.job_type}</b></td>
+                    <td>${log.arch || 'U/L'}</td>
+                    <td>${specialDetail}</td>
+                    <td>${log.receive_date || '-'}</td>
+                    <td class="${dueClass}">${dueText}</td>
+                    <td>${log.material}</td>
+                    <td>${log.importer || '-'}</td>
+                    <td>${log.exporter || '-'}</td>
+                    <td>${log.export_date || '-'}</td>
+                    <td><b>${log.status}</b></td>
+                </tr>`;
+        });
+    }
+
+    function filterTable() {
+        let keyword = document.getElementById('searchInput').value.toLowerCase();
+        let filtered = globalLogs.filter(log => 
+            log.barcode.toLowerCase().includes(keyword) || 
+            log.job_type.toLowerCase().includes(keyword) || 
+            log.department.toLowerCase().includes(keyword) ||
+            log.material.toLowerCase().includes(keyword) ||
+            log.importer.toLowerCase().includes(keyword) ||
+            log.exporter.toLowerCase().includes(keyword) ||
+            log.status.toLowerCase().includes(keyword)
+        );
+        if(currentDeptPage !== 'all') {
+            filtered = filtered.filter(l => l.department === currentDeptPage);
+        }
+        renderTable(filtered);
+    }
+</script>
+</body>
+</html>
