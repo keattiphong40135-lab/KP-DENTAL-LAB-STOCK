@@ -115,17 +115,18 @@
                 </div>
             </div>
 
-            <!-- ส่วนรายงานสถิติแยก (ภาพรวม / นำเข้า / เบิกจ่าย) -->
+            <!-- ส่วนรายงานสถิติแยก (ภาพรวม / นำเข้า / เบิกจ่าย / สินค้าคงค้าง) -->
             <div class="bg-white p-6 rounded-xl shadow-sm space-y-4">
                 
                 <!-- หัวข้อและปุ่มสลับแท็บ -->
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
                     <h2 class="text-xl font-bold text-slate-800">📊 รายงานประวัติสถิติ</h2>
                     
-                    <div class="flex gap-2 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
-                        <button id="tabAllBtn" onclick="switchTab('all')" class="px-3 py-1.5 rounded-md bg-white text-blue-600 shadow-sm">ภาพรวมทั้งหมด</button>
+                    <div class="flex flex-wrap gap-2 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                        <button id="tabAllBtn" onclick="switchTab('all')" class="px-3 py-1.5 rounded-md bg-white text-blue-600 shadow-sm font-bold">ภาพรวมทั้งหมด</button>
                         <button id="tabImportBtn" onclick="switchTab('import')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800">📥 เฉพาะนำเข้า</button>
                         <button id="tabExportBtn" onclick="switchTab('export')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800">📤 เฉพาะเบิกจ่าย</button>
+                        <button id="tabRemainingBtn" onclick="switchTab('remaining')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800">📦 สต็อกคงค้าง</button>
                     </div>
                 </div>
 
@@ -199,6 +200,30 @@
                                 </tr>
                             </thead>
                             <tbody id="exportList" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 4. แท็บสต็อกคงค้าง (เพิ่มใหม่) -->
+                <div id="tabRemaining" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-blue-600">รายงานข้อมูลคงค้างสต็อกสินค้าปัจจุบัน</span>
+                        <button onclick="exportToExcel('remainingTable', 'รายงานสต็อกคงค้าง')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition">📊 โหลด Excel (สต็อกคงค้าง)</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="remainingTable" class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b text-slate-600 text-sm">
+                                    <th class="p-3">ชื่อสินค้า</th>
+                                    <th class="p-3 text-center">คงเหลือ</th>
+                                    <th class="p-3">เลขล็อต</th>
+                                    <th class="p-3">วันหมดอายุ</th>
+                                    <th class="p-3">บริษัทที่จัดซื้อ</th>
+                                    <th class="p-3">นำเข้าล่าสุด</th>
+                                    <th class="p-3">ผู้นำเข้าล่าสุด</th>
+                                </tr>
+                            </thead>
+                            <tbody id="remainingList" class="text-sm"></tbody>
                         </table>
                     </div>
                 </div>
@@ -366,9 +391,10 @@
 
             globalStockData = data || [];
             renderStockTable(globalStockData);
+            renderRemainingTable(globalStockData); // อัปเดตตารางสต็อกคงค้างในส่วนรายงานด้วย
         }
 
-        // แสดงผลตารางสต็อก
+        // แสดงผลตารางสต็อกหลักด้านบน
         function renderStockTable(items) {
             const list = document.getElementById('stockList');
             if (!items || items.length === 0) {
@@ -394,6 +420,30 @@
                         <td class="p-3 text-center">
                             <button onclick="withdrawItem(${item.id}, '${item.name}', ${item.qty}, '${item.lot_number || ''}', '${item.exp_date || ''}', '${item.supplier || ''}')" class="px-3 py-1 bg-amber-500 text-white rounded-md text-xs hover:bg-amber-600">เบิกออก</button>
                         </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // แสดงผลตารางสต็อกคงค้างในส่วนรายงานด้านล่าง
+        function renderRemainingTable(items) {
+            const remainingList = document.getElementById('remainingList');
+            if (!items || items.length === 0) {
+                remainingList.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">ยังไม่มีข้อมูลสินค้าคงค้าง</td></tr>`;
+                return;
+            }
+
+            remainingList.innerHTML = '';
+            items.forEach(item => {
+                remainingList.innerHTML += `
+                    <tr class="border-b hover:bg-slate-50">
+                        <td class="p-3 font-medium text-slate-800">${item.name}</td>
+                        <td class="p-3 text-center font-bold text-blue-600">${item.qty}</td>
+                        <td class="p-3 text-slate-600 font-mono text-xs">${item.lot_number || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.exp_date || '-'}</td>
+                        <td class="p-3 text-slate-600">${item.supplier || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.last_import_date || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.last_importer || '-'}</td>
                     </tr>
                 `;
             });
@@ -459,7 +509,7 @@
             renderSummaryTables(data || []);
         }
 
-        // แสดงผลตารางรายงานทั้ง 3 แท็บ
+        // แสดงผลตารางรายงาน
         function renderSummaryTables(logs) {
             const summaryList = document.getElementById('summaryList');
             const importList = document.getElementById('importList');
@@ -542,10 +592,12 @@
             document.getElementById('tabAll').classList.add('hidden');
             document.getElementById('tabImport').classList.add('hidden');
             document.getElementById('tabExport').classList.add('hidden');
+            document.getElementById('tabRemaining').classList.add('hidden');
 
             document.getElementById('tabAllBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
             document.getElementById('tabImportBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
             document.getElementById('tabExportBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
+            document.getElementById('tabRemainingBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
 
             if (tabName === 'all') {
                 document.getElementById('tabAll').classList.remove('hidden');
@@ -556,6 +608,9 @@
             } else if (tabName === 'export') {
                 document.getElementById('tabExport').classList.remove('hidden');
                 document.getElementById('tabExportBtn').className = "px-3 py-1.5 rounded-md bg-white text-amber-600 shadow-sm font-bold";
+            } else if (tabName === 'remaining') {
+                document.getElementById('tabRemaining').classList.remove('hidden');
+                document.getElementById('tabRemainingBtn').className = "px-3 py-1.5 rounded-md bg-white text-blue-600 shadow-sm font-bold";
             }
         }
 
