@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการสต็อกสินค้า</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS Library สำหรับ Export Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-100 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        
+        <!-- 1. ส่วนเข้าสู่ระบบ / สมัครสมาชิก -->
+        <div id="loginSection" class="bg-white p-6 rounded-xl shadow-md max-w-md mx-auto">
+            <h2 class="text-2xl font-bold text-slate-800 text-center mb-6">เข้าสู่ระบบ / สมัครสมาชิก</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">อีเมล</label>
+                    <input type="email" id="authEmail" class="w-full p-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="example@email.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">รหัสผ่าน</label>
+                    <input type="password" id="authPass" class="w-full p-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••">
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="handleLogin()" class="w-1/2 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition">เข้าสู่ระบบ</button>
+                    <button onclick="handleSignUp()" class="w-1/2 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition">สมัครสมาชิก</button>
+                </div>
+                
+                <div id="authMessage" class="hidden text-xs text-center font-semibold mt-2"></div>
+            </div>
+        </div>
+
+        <!-- 2. ส่วนแอปพลิเคชันหลัก -->
+        <div id="appSection" class="hidden space-y-8">
+            
+            <!-- Header แสดงผู้ใช้ -->
+            <div class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center">
+                <div>
+                    <span class="text-xs text-slate-400 block">ผู้ใช้งานปัจจุบัน</span>
+                    <span id="userEmailDisplay" class="font-bold text-slate-700"></span>
+                </div>
+                <button onclick="handleLogout()" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200">ออกจากระบบ</button>
+            </div>
+
+            <!-- ฟอร์มเพิ่ม/นำเข้าสินค้า -->
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                <h2 class="text-xl font-bold text-slate-800 mb-4">📥 นำเข้าสินค้า / เพิ่มสต็อก</h2>
+                <form id="stockForm" onsubmit="handleImportStock(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อสินค้า *</label>
+                        <input type="text" id="itemName" required class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">จำนวน *</label>
+                        <input type="number" id="itemQty" min="1" required class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">เลขล็อตสินค้า (Lot No.)</label>
+                        <input type="text" id="itemLot" placeholder="เช่น LOT-6901" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">วันหมดอายุ (EXP)</label>
+                        <input type="date" id="expDate" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">บริษัทที่จัดซื้อ / Supplier</label>
+                        <input type="text" id="supplierName" placeholder="ระบุชื่อบริษัท/ร้านค้า" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">ผู้นำเข้า</label>
+                        <input type="text" id="importerName" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">วันที่นำเข้า</label>
+                        <input type="date" id="importDate" class="w-full p-2 border rounded-lg text-sm">
+                    </div>
+                    <div class="md:col-span-4 mt-2">
+                        <button type="submit" class="w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition text-sm">+ บันทึกนำเข้าสินค้า</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ตารางสต็อกสินค้า -->
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                    <h2 class="text-xl font-bold text-slate-800">📦 รายการสินค้าในสต็อก</h2>
+                    <!-- ช่องค้นหา -->
+                    <div class="w-full md:w-64">
+                        <input type="text" id="searchInput" oninput="filterStockTable()" placeholder="🔍 ค้นชื่อสินค้า / เลขล็อต..." class="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b text-slate-600 text-sm">
+                                <th class="p-3">ชื่อสินค้า</th>
+                                <th class="p-3 text-center">คงเหลือ</th>
+                                <th class="p-3">เลขล็อต</th>
+                                <th class="p-3">วันหมดอายุ</th>
+                                <th class="p-3">บริษัทที่จัดซื้อ</th>
+                                <th class="p-3">นำเข้าล่าสุด</th>
+                                <th class="p-3">ผู้นำเข้า</th>
+                                <th class="p-3 text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockList" class="text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ส่วนรายงานสถิติแยก (ภาพรวม / นำเข้า / เบิกจ่าย) -->
+            <div class="bg-white p-6 rounded-xl shadow-sm space-y-4">
+                
+                <!-- หัวข้อและปุ่มสลับแท็บ -->
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
+                    <h2 class="text-xl font-bold text-slate-800">📊 รายงานประวัติสถิติ</h2>
+                    
+                    <div class="flex gap-2 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                        <button id="tabAllBtn" onclick="switchTab('all')" class="px-3 py-1.5 rounded-md bg-white text-blue-600 shadow-sm">ภาพรวมทั้งหมด</button>
+                        <button id="tabImportBtn" onclick="switchTab('import')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800">📥 เฉพาะนำเข้า</button>
+                        <button id="tabExportBtn" onclick="switchTab('export')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800">📤 เฉพาะเบิกจ่าย</button>
+                    </div>
+                </div>
+
+                <!-- 1. แท็บภาพรวมทั้งหมด -->
+                <div id="tabAll">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-slate-600">รายการประวัติทั้งหมด</span>
+                        <button onclick="exportToExcel('allTable', 'รายงานภาพรวมสต็อก')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition">📊 โหลด Excel (ภาพรวม)</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="allTable" class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b text-slate-600 text-sm">
+                                    <th class="p-3">วันที่</th>
+                                    <th class="p-3">เวลา</th>
+                                    <th class="p-3 text-center">ประเภท</th>
+                                    <th class="p-3">ชื่อสินค้า</th>
+                                    <th class="p-3 text-center">จำนวน</th>
+                                    <th class="p-3">เลขล็อต</th>
+                                    <th class="p-3">วันหมดอายุ</th>
+                                    <th class="p-3">บริษัทจัดซื้อ</th>
+                                    <th class="p-3">ผู้ทำรายการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="summaryList" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. แท็บเฉพาะนำเข้า -->
+                <div id="tabImport" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-emerald-600">รายการประวัตินำเข้าสินค้า</span>
+                        <button onclick="exportToExcel('importTable', 'รายงานการนำเข้า')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition">📊 โหลด Excel (เฉพาะนำเข้า)</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="importTable" class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b text-slate-600 text-sm">
+                                    <th class="p-3">วันที่</th>
+                                    <th class="p-3">เวลา</th>
+                                    <th class="p-3">ชื่อสินค้า</th>
+                                    <th class="p-3 text-center">จำนวนนำเข้า</th>
+                                    <th class="p-3">เลขล็อต</th>
+                                    <th class="p-3">วันหมดอายุ</th>
+                                    <th class="p-3">บริษัทจัดซื้อ</th>
+                                    <th class="p-3">ผู้นำเข้า</th>
+                                </tr>
+                            </thead>
+                            <tbody id="importList" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. แท็บเฉพาะเบิกจ่าย -->
+                <div id="tabExport" class="hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-amber-600">รายการประวัติการเบิกจ่าย</span>
+                        <button onclick="exportToExcel('exportTable', 'รายงานการเบิกจ่าย')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition">📊 โหลด Excel (เฉพาะเบิกจ่าย)</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="exportTable" class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b text-slate-600 text-sm">
+                                    <th class="p-3">วันที่</th>
+                                    <th class="p-3">เวลา</th>
+                                    <th class="p-3">ชื่อสินค้า</th>
+                                    <th class="p-3 text-center">จำนวนเบิก</th>
+                                    <th class="p-3">เลขล็อต</th>
+                                    <th class="p-3">ผู้เบิก</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exportList" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 3. JavaScript -->
+    <script>
+        const SUPABASE_URL = 'https://curhjychfbcqqsdmqpuw.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_2U29qhoaGbKyTbuRzVZSYQ_NZubdeMR';
+
+        const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let currentUser = null;
+        let globalStockData = []; 
+
+        // เช็คการล็อกอิน
+        db.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                currentUser = session.user;
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('appSection').classList.remove('hidden');
+                
+                const userName = currentUser?.email ? currentUser.email.split('@')[0] : 'Guest';
+                document.getElementById('userEmailDisplay').innerText = currentUser.email;
+                document.getElementById('importerName').value = userName;
+                document.getElementById('importDate').valueAsDate = new Date();
+
+                loadStockData();
+                loadLogsData();
+            } else {
+                currentUser = null;
+                document.getElementById('loginSection').classList.remove('hidden');
+                document.getElementById('appSection').classList.add('hidden');
+            }
+        });
+
+        // เข้าสู่ระบบ
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPass').value;
+            const msg = document.getElementById('authMessage');
+
+            const { data, error } = await db.auth.signInWithPassword({ email, password });
+            if (error) {
+                msg.innerText = '❌ ' + error.message;
+                msg.className = 'text-xs text-center font-semibold text-red-500 block mt-2';
+            }
+        }
+
+        // สมัครสมาชิก
+        async function handleSignUp() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPass').value;
+            const msg = document.getElementById('authMessage');
+
+            if (!email || !password) {
+                msg.innerText = '❌ กรุณากรอกอีเมลและรหัสผ่าน';
+                msg.className = 'text-xs text-center font-semibold text-red-500 block mt-2';
+                return;
+            }
+
+            const { data, error } = await db.auth.signUp({ email, password });
+            if (error) {
+                msg.innerText = '❌ ' + error.message;
+                msg.className = 'text-xs text-center font-semibold text-red-500 block mt-2';
+            } else {
+                msg.innerText = '✅ สมัครสมาชิกเรียบร้อย! สามารถกดเข้าสู่ระบบได้เลย';
+                msg.className = 'text-xs text-center font-semibold text-emerald-600 block mt-2';
+            }
+        }
+
+        // ออกจากระบบ
+        async function handleLogout() {
+            await db.auth.signOut();
+        }
+
+        // นำเข้าสินค้า + บันทึกลงประวัติการนำเข้า
+        async function handleImportStock(e) {
+            e.preventDefault();
+            const name = document.getElementById('itemName').value.trim();
+            const qty = parseInt(document.getElementById('itemQty').value);
+            const lot = document.getElementById('itemLot').value.trim() || 'N/A';
+            const exp = document.getElementById('expDate').value;
+            const supplier = document.getElementById('supplierName').value.trim();
+            const importer = document.getElementById('importerName').value;
+            const date = document.getElementById('importDate').value;
+
+            try {
+                let query = db.from('products').select('*').eq('name', name);
+                
+                if (lot === 'N/A') {
+                    query = query.is('lot_number', null);
+                } else {
+                    query = query.eq('lot_number', lot);
+                }
+
+                const { data: existingList, error: searchError } = await query;
+                if (searchError) throw searchError;
+
+                const existing = existingList && existingList.length > 0 ? existingList[0] : null;
+
+                if (existing) {
+                    const { error: updateError } = await db.from('products').update({
+                        qty: existing.qty + qty,
+                        exp_date: exp || existing.exp_date,
+                        supplier: supplier || existing.supplier,
+                        last_import_date: date,
+                        last_importer: importer
+                    }).eq('id', existing.id);
+
+                    if (updateError) throw updateError;
+                } else {
+                    const { error: insertError } = await db.from('products').insert([{
+                        name, 
+                        qty, 
+                        lot_number: lot === 'N/A' ? null : lot, 
+                        exp_date: exp || null, 
+                        supplier: supplier || null, 
+                        last_import_date: date, 
+                        last_importer: importer
+                    }]);
+
+                    if (insertError) throw insertError;
+                }
+
+                const { error: logError } = await db.from('stock_log').insert([{
+                    item_name: name,
+                    qty: qty,
+                    lot_number: lot === 'N/A' ? null : lot,
+                    exp_date: exp || null,
+                    supplier: supplier || null,
+                    withdrawer: importer,
+                    type: 'นำเข้า'
+                }]);
+
+                if (logError) throw logError;
+
+                alert('✅ บันทึกนำเข้าสินค้าเรียบร้อย!');
+
+                document.getElementById('stockForm').reset();
+                document.getElementById('importerName').value = currentUser?.email ? currentUser.email.split('@')[0] : 'Guest';
+                document.getElementById('importDate').valueAsDate = new Date();
+                
+                loadStockData();
+                loadLogsData();
+
+            } catch (err) {
+                console.error("Supabase Error:", err);
+                alert('❌ เกิดข้อผิดพลาดในการบันทึก: ' + (err.message || 'กรุณาเช็คคอลัมน์ใน Supabase'));
+            }
+        }
+
+        // โหลดสต็อกสินค้า
+        async function loadStockData() {
+            const { data, error } = await db.from('products').select('*');
+
+            if (error) {
+                alert('เกิดข้อผิดพลาดในการโหลดสต็อก: ' + error.message);
+                return;
+            }
+
+            globalStockData = data || [];
+            renderStockTable(globalStockData);
+        }
+
+        // แสดงผลตารางสต็อก
+        function renderStockTable(items) {
+            const list = document.getElementById('stockList');
+            if (!items || items.length === 0) {
+                list.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">ยังไม่มีรายการสินค้าในระบบ</td></tr>`;
+                return;
+            }
+
+            list.innerHTML = '';
+            items.forEach(item => {
+                list.innerHTML += `
+                    <tr class="border-b hover:bg-slate-50">
+                        <td class="p-3 font-medium text-slate-800">${item.name}</td>
+                        <td class="p-3 text-center">
+                            <span class="px-2.5 py-1 rounded-full font-bold text-xs ${item.qty < 5 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-700'}">
+                                ${item.qty} ${item.qty < 5 ? '⚠️' : ''}
+                            </span>
+                        </td>
+                        <td class="p-3 text-slate-600 font-mono text-xs">${item.lot_number || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.exp_date || '-'}</td>
+                        <td class="p-3 text-slate-600">${item.supplier || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.last_import_date || '-'}</td>
+                        <td class="p-3 text-slate-500">${item.last_importer || '-'}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="withdrawItem(${item.id}, '${item.name}', ${item.qty}, '${item.lot_number || ''}', '${item.exp_date || ''}', '${item.supplier || ''}')" class="px-3 py-1 bg-amber-500 text-white rounded-md text-xs hover:bg-amber-600">เบิกออก</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // ฟังก์ชันค้นหาสินค้า
+        function filterStockTable() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filtered = globalStockData.filter(item => {
+                const nameMatch = item.name ? item.name.toLowerCase().includes(query) : false;
+                const lotMatch = item.lot_number ? item.lot_number.toLowerCase().includes(query) : false;
+                return nameMatch || lotMatch;
+            });
+            renderStockTable(filtered);
+        }
+
+        // เบิกสินค้า
+        async function withdrawItem(id, name, currentQty, lot, exp, supplier) {
+            const withdrawQtyStr = prompt(`ต้องการเบิก "${name}" (ล็อต: ${lot || '-'}) จำนวนเท่าไหร่? (คงเหลือ ${currentQty})`);
+            if (!withdrawQtyStr) return;
+
+            const withdrawQty = parseInt(withdrawQtyStr);
+            if (isNaN(withdrawQty) || withdrawQty <= 0) return alert('❌ กรุณากรอกจำนวนตัวเลขที่ถูกต้อง');
+            if (withdrawQty > currentQty) return alert('❌ สต็อกมีไม่พอสำหรับเบิก');
+
+            const defaultName = currentUser?.email ? currentUser.email.split('@')[0] : '';
+            const withdrawer = prompt(`กรุณากรอกชื่อผู้เบิกสินค้า:`, defaultName);
+            if (!withdrawer) return alert('❌ ต้องระบุชื่อผู้เบิกสินค้า');
+
+            const { error: updateError } = await db.from('products').update({ qty: currentQty - withdrawQty }).eq('id', id);
+            if (updateError) {
+                return alert('❌ ไม่สามารถอัปเดตสต็อกได้: ' + updateError.message);
+            }
+
+            const { error: logError } = await db.from('stock_log').insert([{
+                item_name: name,
+                qty: withdrawQty,
+                lot_number: lot,
+                exp_date: exp,
+                supplier: supplier,
+                withdrawer: withdrawer,
+                type: 'เบิกออก'
+            }]);
+
+            if (logError) {
+                return alert('❌ ไม่สามารถบันทึกประวัติได้: ' + logError.message);
+            }
+
+            alert('✅ เบิกสินค้าเรียบร้อยแล้ว!');
+            loadStockData();
+            loadLogsData();
+        }
+
+        // โหลดประวัติ
+        async function loadLogsData() {
+            const { data, error } = await db.from('stock_log').select('*');
+
+            if (error) {
+                console.error('เกิดข้อผิดพลาดในการโหลดประวัติ:', error);
+                return;
+            }
+
+            renderSummaryTables(data || []);
+        }
+
+        // แสดงผลตารางรายงานทั้ง 3 แท็บ
+        function renderSummaryTables(logs) {
+            const summaryList = document.getElementById('summaryList');
+            const importList = document.getElementById('importList');
+            const exportList = document.getElementById('exportList');
+
+            if (!logs || logs.length === 0) {
+                const emptyRow = `<tr><td colspan="9" class="p-4 text-center text-slate-400">ไม่มีข้อมูลรายการสำหรับรายงาน</td></tr>`;
+                summaryList.innerHTML = emptyRow;
+                importList.innerHTML = emptyRow;
+                exportList.innerHTML = emptyRow;
+                return;
+            }
+
+            summaryList.innerHTML = '';
+            importList.innerHTML = '';
+            exportList.innerHTML = '';
+
+            const reversedLogs = [...logs].reverse();
+
+            reversedLogs.forEach(log => {
+                let dateStr = '-';
+                let timeStr = '-';
+                
+                if (log.created_at) {
+                    const d = new Date(log.created_at);
+                    dateStr = d.toLocaleDateString('th-TH');
+                    timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                }
+
+                const logType = log.type || 'เบิกออก';
+
+                // 1. เพิ่มในตารางภาพรวมทั้งหมด
+                summaryList.innerHTML += `
+                    <tr class="border-b hover:bg-slate-50">
+                        <td class="p-3 text-slate-600">${dateStr}</td>
+                        <td class="p-3 text-slate-600">${timeStr}</td>
+                        <td class="p-3 text-center font-bold ${logType === 'นำเข้า' ? 'text-emerald-600' : 'text-amber-600'}">${logType}</td>
+                        <td class="p-3 font-medium text-slate-800">${log.item_name || '-'}</td>
+                        <td class="p-3 text-center font-bold text-slate-700">${log.qty || 0}</td>
+                        <td class="p-3 text-slate-600 font-mono text-xs">${log.lot_number || '-'}</td>
+                        <td class="p-3 text-slate-600">${log.exp_date || '-'}</td>
+                        <td class="p-3 text-slate-600">${log.supplier || '-'}</td>
+                        <td class="p-3 text-slate-600">${log.withdrawer || '-'}</td>
+                    </tr>
+                `;
+
+                // 2. แยกเข้าตารางเฉพาะนำเข้า
+                if (logType === 'นำเข้า') {
+                    importList.innerHTML += `
+                        <tr class="border-b hover:bg-slate-50">
+                            <td class="p-3 text-slate-600">${dateStr}</td>
+                            <td class="p-3 text-slate-600">${timeStr}</td>
+                            <td class="p-3 font-medium text-slate-800">${log.item_name || '-'}</td>
+                            <td class="p-3 text-center font-bold text-emerald-600">+${log.qty || 0}</td>
+                            <td class="p-3 text-slate-600 font-mono text-xs">${log.lot_number || '-'}</td>
+                            <td class="p-3 text-slate-600">${log.exp_date || '-'}</td>
+                            <td class="p-3 text-slate-600">${log.supplier || '-'}</td>
+                            <td class="p-3 text-slate-600">${log.withdrawer || '-'}</td>
+                        </tr>
+                    `;
+                } 
+                // 3. แยกเข้าตารางเฉพาะเบิกจ่าย
+                else if (logType === 'เบิกออก') {
+                    exportList.innerHTML += `
+                        <tr class="border-b hover:bg-slate-50">
+                            <td class="p-3 text-slate-600">${dateStr}</td>
+                            <td class="p-3 text-slate-600">${timeStr}</td>
+                            <td class="p-3 font-medium text-slate-800">${log.item_name || '-'}</td>
+                            <td class="p-3 text-center font-bold text-amber-600">-${log.qty || 0}</td>
+                            <td class="p-3 text-slate-600 font-mono text-xs">${log.lot_number || '-'}</td>
+                            <td class="p-3 text-slate-600">${log.withdrawer || '-'}</td>
+                        </tr>
+                    `;
+                }
+            });
+        }
+
+        // สลับแท็บสถิติ
+        function switchTab(tabName) {
+            document.getElementById('tabAll').classList.add('hidden');
+            document.getElementById('tabImport').classList.add('hidden');
+            document.getElementById('tabExport').classList.add('hidden');
+
+            document.getElementById('tabAllBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
+            document.getElementById('tabImportBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
+            document.getElementById('tabExportBtn').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-800";
+
+            if (tabName === 'all') {
+                document.getElementById('tabAll').classList.remove('hidden');
+                document.getElementById('tabAllBtn').className = "px-3 py-1.5 rounded-md bg-white text-blue-600 shadow-sm font-bold";
+            } else if (tabName === 'import') {
+                document.getElementById('tabImport').classList.remove('hidden');
+                document.getElementById('tabImportBtn').className = "px-3 py-1.5 rounded-md bg-white text-emerald-600 shadow-sm font-bold";
+            } else if (tabName === 'export') {
+                document.getElementById('tabExport').classList.remove('hidden');
+                document.getElementById('tabExportBtn').className = "px-3 py-1.5 rounded-md bg-white text-amber-600 shadow-sm font-bold";
+            }
+        }
+
+        // ฟังก์ชันส่งออก Excel รายตาราง
+        function exportToExcel(tableId, fileName) {
+            const table = document.getElementById(tableId);
+            if (!table) return alert('ไม่พบข้อมูลตาราง');
+
+            const wb = XLSX.utils.table_to_book(table, { sheet: "Report" });
+            const today = new Date().toLocaleDateString('th-TH').replace(/\//g, '-');
+            XLSX.writeFile(wb, `${fileName}_${today}.xlsx`);
+        }
+    </script>
+</body>
+</html>
